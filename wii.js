@@ -8,70 +8,127 @@ var bindings = [
 	{
 		prettyName: "D-Pad Left",
 		handlerType: "button_left",
-		byteBlock: 1,
-		bit: 0x01
+		actiontype: "toggle",
+		foundIn: {
+			"0x30": {
+				inByte: 1,
+				atBit: 1
+			}
+		}
 	},
 	{
 		prettyName: "D-Pad Right",
 		handlerType: "button_right",
-		byteBlock: 1,
-		bit: 0x02
+		actiontype: "toggle",
+		foundIn: {
+			"0x30": {
+				inByte: 1,
+				atBit: 2
+			}
+		}
 	},
 	{
 		prettyName: "D-Pad Down",
 		handlerType: "button_down",
-		byteBlock: 1,
-		bit: 0x04
+		actiontype: "toggle",
+		foundIn: {
+			"0x30": {
+				inByte: 1,
+				atBit: 3
+			}
+		}
 	},
 	{
 		prettyName: "D-Pad Up",
 		handlerType: "button_up",
-		byteBlock: 1,
-		bit: 0x08
+		actiontype: "toggle",
+		foundIn: {
+			"0x30": {
+				inByte: 1,
+				atBit: 4
+			}
+		}
 	},
 	{
 		prettyName: "Plus",
 		handlerType: "button_plus",
-		byteBlock: 1,
-		bit: 0x10
+		actiontype: "toggle",
+		foundIn: {
+			"0x30": {
+				inByte: 1,
+				atBit: 5
+			}
+		}
 	},
 	{
 		prettyName: "Two",
 		handlerType: "button_2",
-		byteBlock: 2,
-		bit: 0x01
+		actiontype: "toggle",
+		foundIn: {
+			"0x30": {
+				inByte: 2,
+				atBit: 1
+			}
+		}
 	},
 	{
 		prettyName: "One",
 		handlerType: "button_1",
-		byteBlock: 2,
-		bit: 0x02
+		actiontype: "toggle",
+		foundIn: {
+			"0x30": {
+				inByte: 2,
+				atBit: 2
+			}
+		}
 	},
 	{
 		prettyName: "B",
 		handlerType: "button_b",
-		byteBlock: 2,
-		bit: 0x04
+		actiontype: "toggle",
+		foundIn: {
+			"0x30": {
+				inByte: 2,
+				atBit: 3
+			}
+		}
 	},
 	{
 		prettyName: "A",
 		handlerType: "button_a",
-		byteBlock: 2,
-		bit: 0x08
+		actiontype: "toggle",
+		foundIn: {
+			"0x30": {
+				inByte: 2,
+				atBit: 4
+			}
+		}
 	},
 	{
 		prettyName: "Minus",
 		handlerType: "button_minus",
-		byteBlock: 2,
-		bit: 0x10
+		actiontype: "toggle",
+		foundIn: {
+			"0x30": {
+				inByte: 2,
+				atBit: 5
+			}
+		}
 	},
 	{
 		prettyName: "Home",
 		handlerType: "button_home",
-		byteBlock: 2,
-		bit: 0x80
-	},
+		actiontype: "toggle",
+		foundIn: {
+			"0x30": {
+				inByte: 2,
+				atBit: 8
+			}
+		}
+	}
 ];
+
+// 1: 0x01, 2: 0x02, 3: 0x04, 4: 0x08, 5: 0x10, 6: 0x20, 7: 0x40, 8: 0x80
 
 var WiiController = function() {
 	this.last = {buttons: {}}; // Setup shit I need
@@ -102,63 +159,105 @@ var WiiController = function() {
 			// Detect Message type & Values
 			u.exists = true;
 			if (e[0] == 0x30) { // Ensure message type == 0x30, this is default button type. And is all that is handled at the moment.
+				var reportCode = "0x30";
 				// Brace
-				var found = {buttons: {}};
-				var byteblockcopy = [0x30, e[1], e[2]];
+				var found = {};
 				var eventsToRun = {};
 				
-				// Check for bits, largest to smallest
-				for (var i = bindings.length - 1; i >= 0; i--) {
+				// Do maths to this bitch
+				var copiedBytes = [];
+				
+				for (var i = 0; i < e.length; i++) {
+					copiedBytes.push(e[i]);
+				}
+				copiedBytes.shift();
+				
+				// Put maths in this bitch
+				var bitsMap = [];
+				
+				// Bit conversion to a map in bitsMap[byteNum][bitNum]
+				for (var i = 0; i < copiedBytes.length; i++) {
+					bitsMap.push([]);
+					for (var j = 0; j < 8; j ++) {
+						var czech = Math.pow(2, (7 - j));
+						if (copiedBytes[i] - czech >= 0) {
+							copiedBytes[i] -= czech;
+							bitsMap[i].push(true);
+						} else {
+							bitsMap[i].push(false);
+						}
+					}
+					bitsMap[i].reverse();
+				}
+			
+				
+				// Now that I have a map of all the things, look through the bindings and convert it to values.
+				for (var i = 0; i < bindings.length; i++) {
 					var work = bindings[i];
-					if (byteblockcopy[work.byteBlock] - work.bit >= 0) {
-						byteblockcopy[work.byteBlock] -= work.bit;
-						found.buttons[work.handlerType] = true;
-					} else {
-						found.buttons[work.handlerType] = false;
+					
+					// If the binding is in this here report
+					if (work.foundIn[reportCode] !== undefined) {
+						// Then lets do some meth!
+						// If it has a toggle type (such as buttons)
+						if (work.actiontype == "toggle") {
+							// It should have only one bit per report
+							var sevn = work.foundIn[reportCode];
+							
+							found[work.handlerType] = {
+								type: "toggle",
+								value: bitsMap[sevn.inByte - 1][sevn.atBit - 1] == true
+							}
+						}
 					}
 				}
+			
+				// Find values
+				
+				// Then enumerate events, comparing then and firing events.
 				
 				// Now I should have some found values yay;
 				
-				var foundKeys = Object.keys(found.buttons);// BC IM LAZY
-				var lastKeys = Object.keys(u.last.buttons); 
+				var foundKeys = Object.keys(found);// BC IM LAZY
+				var lastKeys = Object.keys(u.last); 
 				
-				if (foundKeys.length == lastKeys.length) { // Double check last and found have same length
-					for (var i = 0; i < foundKeys.length; i++) { // Using foundkeys all the way now to ensure that no differences in key order.
-						if (found.buttons[foundKeys[i]] == true && u.last.buttons[foundKeys[i]] == false) { // If pressed now and not before,
-							eventsToRun[foundKeys[i]] = "pressed"; // Saving that pressed event is correct
-						} else if (found.buttons[foundKeys[i]] == false && u.last.buttons[foundKeys[i]] == true) { // If released as an else if because fuck you and fuck me, that's why
-							eventsToRun[foundKeys[i]] = "released"; // Saving that released event is correct
-						} 
-					}
-				} else if (lastKeys.length == 0) { // If last has not been set we have fresh
-					for (var i = 0; i < foundKeys.length; i++) { // Modified version of above
-						if (found.buttons[foundKeys[i]] == true) { // If pressed
-							eventsToRun[foundKeys[i]] = "pressed";
+				
+				for (var i = 0; i < foundKeys.length; i++) { // Using foundkeys because I'm lazy as shit.
+					if (lastKeys.indexOf(foundKeys[i]) == -1) {
+						// Then it wasn't there the previous time
+						if (found[foundKeys[i]].type = "toggle") {
+							if (found[foundKeys[i]].value == true && false == false) { // If pressed now and not before,
+								eventsToRun[foundKeys[i]] = "pressed"; // Saving that pressed event is correct
+							} else if (found[foundKeys[i]].value == false && false == true) { // If released as an else if because fuck you and fuck me, that's why
+								eventsToRun[foundKeys[i]] = "released"; // Saving that released event is correct
+							} 
+						}
+					} else {
+						// Then it was there before so actually compare it twat
+						if (found[foundKeys[i]].type = "toggle") {
+							if (found[foundKeys[i]].value == true && u.last[foundKeys[i]].value == false) { // If pressed now and not before,
+								eventsToRun[foundKeys[i]] = "pressed"; // Saving that pressed event is correct
+							} else if (found[foundKeys[i]].value == false && u.last[foundKeys[i]].value == true) { // If released as an else if because fuck you and fuck me, that's why
+								eventsToRun[foundKeys[i]] = "released"; // Saving that released event is correct
+							} 
 						}
 					}
-				} else { // We fucked
-					console.log( 'Error: '.red, 'We\'re fucked' );
 				}
 				
 				// Now to fucking enumerate the events.
 				// BTW: Assuming there will likely only be one change per call of this function.
 				
-				var eventKeysYawn = Object.keys(eventsToRun);
+				var eventKeysYawn = Object.keys(eventsToRun); // Lazy
 				
 				for (var i = 0; i < eventKeysYawn.length; i++) {
 					var sevn = eventKeysYawn[i];
 					for (var j = 0; j < u.eventListeners.length; j++) {
-						if (u.eventListeners[j].type == sevn && u.eventListeners[j].action == eventsToRun[sevn]) {
-							u.eventListeners[j].callback();
+						if ((u.eventListeners[j].type == sevn || u.eventListeners[j].type == "all" || u.eventListeners[j].type == "*") && (u.eventListeners[j].action == eventsToRun[sevn] || u.eventListeners[j].action == "all" || u.eventListeners[j].action == "*")) {
+							u.eventListeners[j].callback({type: sevn, action: eventsToRun[sevn]});
 						}
 					}
 				}
 				
-				// DEBUGGING GOD MODE YEEEEEEEEEEET
-				// console.log(eventsToRun);
-				
-				u.last = found;
+				u.last = found; // Get ready for the next event
 			} else if (e[0] == 0x20) { // If the wiimote sends a status report (regardless if requested)
 				u.hid.write([0x12, 0x00, 0x30]); // Send a message to change the reporting mode to 0x30 (default)
 				// Debug Mode:
@@ -189,6 +288,7 @@ var WiiListenerToken = function() {
 
 WiiController.prototype.on = function(type, action, callback) { // The most important function. Why? Because this makes sure nothing else gets shafted
 	var typeSHIIIT = true;
+	var actionSHIIIT = false;
 	for (var i = 0; i < bindings.length; i++) {
 		if (type == bindings[i].handlerType) {
 			typeSHIIIT = false;
@@ -196,12 +296,20 @@ WiiController.prototype.on = function(type, action, callback) { // The most impo
 		}
 	}
 	
+	if (type == "*" || type == "all") {
+		typeSHIIIT = false;
+	}
+	
+	if (action == "*" || action == "all") {
+		actionSHIIIT = false;
+	}
+	
 	if (typeSHIIIT) {
 		console.log( 'Error: '.red, 'Invalid event type specified (see docs)' );
 		return;
 	}
 	
-	if (action !== "pressed" && action !== "released") {
+	if (actionSHIIIT) {
 		console.log( 'Error: '.red, 'Invalid action type specified (pressed or released' );
 		return;
 	}
@@ -217,7 +325,7 @@ WiiController.prototype.on = function(type, action, callback) { // The most impo
 	return createdToken;
 };
 
-WiiController.prototype.off = function(token) {
+WiiController.prototype.off = function(token, action) {
 	if (typeof token == "WiiListenerToken") {
 		var confiorm = false;
 		for (var i = 0; i < this.eventListeners.length; i++) {
@@ -230,6 +338,8 @@ WiiController.prototype.off = function(token) {
 		if (!confiorm) {
 			console.log( 'Error: '.red, 'Token could not find an event listener.' );
 		}
+	} else if (typeof token == "string") {
+		
 	} else {
 		console.log( 'Error: '.red, 'Provided argument is not a Token. (tokens are returned from WiiController.on)' );
 	}
